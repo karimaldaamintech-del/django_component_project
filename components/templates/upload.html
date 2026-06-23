@@ -2,14 +2,204 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Upload Component File</title>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 40px;
+            background-color: #f9f9f9;
+        }
+        .container {
+            max-width: 950px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        h2 { color: #333; }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            margin-right: 10px;
+        }
+        .btn-upload {
+            background-color: #007bff;
+            color: white;
+        }
+        .btn-upload:hover { background-color: #0056b3; }
+        
+        /* زر التحميل الجديد */
+        .btn-download {
+            background-color: #28a745;
+            color: white;
+            display: none; /* مخفي وظهر فقط لما النتائج ترجع */
+        }
+        .btn-download:hover { background-color: #218838; }
+
+        .result-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 30px;
+            display: none;
+        }
+        .result-table th, .result-table td {
+            border: 1px solid #ddd;
+            padding: 12px;
+            text-align: left;
+        }
+        .result-table th {
+            background-color: #f2f2f2;
+            color: #333;
+        }
+        .badge {
+            background-color: #28a745;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+        .loading {
+            display: none;
+            color: #555;
+            font-weight: bold;
+            margin-top: 15px;
+        }
+        .actions-wrapper {
+            display: flex;
+            align-items: center;
+        }
+    </style>
 </head>
 <body>
-    <h2>Upload Component File (Excel or CSV)</h2>
-    <form method="POST" enctype="multipart/form-data">
+
+<div class="container">
+    <h2>Upload Component File (Master Table Workflow)</h2>
+    <p>Select your Excel or CSV file containing <strong>MPN, MAN, and Description</strong>.</p>
+    
+    <form id="uploadForm" enctype="multipart/form-data">
         {% csrf_token %}
-        <input type="file" name="component_file" accept=".xlsx, .xls, .csv" required>
-        <button type="submit">Upload and Process</button>
+        <div class="form-group">
+            <input type="file" id="componentFile" name="component_file" accept=".xlsx, .xls, .csv" required>
+        </div>
+        <div class="actions-wrapper">
+            <button type="submit" class="btn-upload">Upload and Process</button>
+            <button type="button" id="downloadBtn" class="btn-download">📥 Download Result (Excel)</button>
+        </div>
     </form>
+
+    <div id="loadingText" class="loading">Processing file, saving to master table, and calling API... Please wait...</div>
+
+    <table id="resultsTable" class="result-table">
+        <thead>
+            <tr>
+                <th>DB ID</th>
+                <th>MPN</th>
+                <th>MAN</th>
+                <th>Description</th>
+                <th>Datasheet URL</th>
+                <th>Status</th>
+                <th>Lifecycle</th>
+            </tr>
+        </thead>
+        <tbody id="resultsBody">
+            </tbody>
+    </table>
+</div>
+
+<script>
+    let currentBatchData = []; // متغير للاحتفاظ بالبيانات الحالية لغرض التحميل
+    let currentBatchId = '';
+
+    document.getElementById('uploadForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        const formData = new FormData(this);
+        const loadingText = document.getElementById('loadingText');
+        const resultsTable = document.getElementById('resultsTable');
+        const resultsBody = document.getElementById('resultsBody');
+        const downloadBtn = document.getElementById('downloadBtn');
+        
+        loadingText.style.display = 'block';
+        resultsTable.style.display = 'none';
+        downloadBtn.style.display = 'none'; // إخفاء زر التحميل عند البدء برفع ملف جديد
+        resultsBody.innerHTML = '';
+
+        fetch('', {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            }
+        })
+        .then(response => response.json())
+        .then(res => {
+            loadingText.style.display = 'none';
+            
+            if (res.data && res.data.length > 0) {
+                currentBatchData = res.data; // حفظ البيانات في الذاكرة للتحميل لاحقاً
+                currentBatchId = res.batch_id;
+
+                res.data.forEach(item => {
+                    const row = `
+                        <tr>
+                            <td><strong>${item.id}</strong></td>
+                            <td>${item.mpn}</td>
+                            <td>${item.man}</td>
+                            <td>${item.description}</td>
+                            <td><a href="${item.datasheet_url}" target="_blank">View Datasheet</a></td>
+                            <td><span class="badge">${item.status}</span></td>
+                            <td>${item.lifecycle}</td>
+                        </tr>
+                    `;
+                    resultsBody.innerHTML += row;
+                });
+                
+                resultsTable.style.display = 'table';
+                downloadBtn.style.display = 'inline-block'; // إظهار زر تحميل الإكسيل المدمج
+            } else if (res.error) {
+                alert('Error: ' + res.error);
+            }
+        })
+        .catch(err => {
+            loadingText.style.display = 'none';
+            alert('Something went wrong: ' + err);
+        });
+    });
+
+    // منطق جافاسكريبت لتوليد وتحميل ملف Excel يحتوي على الأعمدة السبعة الكاملة
+    document.getElementById('downloadBtn').addEventListener('click', function() {
+        if (currentBatchData.length === 0) return;
+
+        // تجهيز وتنسيق البيانات بالشكل المطلوب داخل ملف الإكسيل الجديد
+        const excelRows = currentBatchData.map(item => ({
+            "Database ID": item.id,
+            "MPN": item.mpn,
+            "MAN": item.man,
+            "Description": item.description,
+            "Datasheet URL": item.datasheet_url,
+            "Status": item.status,
+            "Lifecycle": item.lifecycle
+        }));
+
+        // إنشاء كتاب عمل جديد (Workbook) وورقة عمل (Worksheet)
+        const worksheet = XLSX.utils.json_to_sheet(excelRows);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Enhanced Components");
+
+        // تحميل الملف فوراً وبشكل تلقائي في المتصفح باسم يحتوي على الـ Batch ID لتمييزه
+        XLSX.writeFile(workbook, `result_batch_${currentBatchId}.xlsx`);
+    });
+</script>
+
 </body>
 </html>
