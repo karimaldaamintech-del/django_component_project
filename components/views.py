@@ -113,6 +113,5 @@ def upload_and_process_file(request):
         }, safe=False)
 
     return render(request, 'upload.html')
-    def test():
-        pass
+
         
