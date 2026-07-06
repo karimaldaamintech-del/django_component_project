@@ -114,7 +114,5 @@ def upload_and_process_file(request):
 
     return render(request, 'upload.html')
 
-def test_2 ():
-    pass
-    
+
         
